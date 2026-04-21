@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>情绪木偶</title>
+  <link rel="preconnect" href="https://images.unsplash.com">
+  <link rel="preconnect" href="https://cdn.jsdelivr.net">
+  <link rel="stylesheet" href="./styles.css">
+  <script src="./pixi.min.js"></script>
+  <script src="./live2dcubismcore.min.js"></script>
+  <script>
+    // pixi-live2d-display 的 cubism4.js 用 webpack 打包，内部引用了 process.env
+    // 浏览器没有 process，需要在此 polyfill
+    window.process = window.process || { env: { NODE_ENV: "production" } };
+    if (window.Live2DCubismCore && !window.Live2DCubismCore.Memory) {
+      window.Live2DCubismCore.Memory = {
+        initializeAmountOfMemory: function () {},
+      };
+    }
+  </script>
+  <script src="./cubism4.js"></script>
+</head>
+<body>
+  <main class="page-shell">
+    <section class="hero-band">
+      <div class="hero-backdrop"></div>
+      <div class="hero-mask"></div>
+      <div class="hero-inner">
+        <div class="hero-copy">
+          <p class="hero-tag">脑机情绪数字生命</p>
+          <h1>情绪木偶</h1>
+          <p class="hero-text">把脑电里的情绪判断、自然文本和语音表达连成一条可联调的数字生命链路。</p>
+          <div class="hero-actions">
+            <button class="primary-button" id="openGuideBtn" type="button">查看使用说明</button>
+            <button class="ghost-button" id="jumpControlBtn" type="button">直接开始联调</button>
+          </div>
+        </div>
+
+        <div class="hero-stage" id="avatarStage" data-expression="neutral">
+          <canvas id="live2dCanvas"></canvas>
+          <div class="avatar-glow"></div>
+
+          <div class="stage-card stage-card-top">
+            <span>当前情绪</span>
+            <strong id="dominantEmotion">平静</strong>
+          </div>
+
+          <div class="stage-card stage-card-middle">
+            <span>动作状态</span>
+            <strong id="animationState">平静待机</strong>
+          </div>
+
+          <div class="stage-card stage-card-bottom">
+            <div class="stage-metric">
+              <span>愉悦度</span>
+              <strong id="valenceValue">0.00</strong>
+            </div>
+            <div class="stage-metric">
+              <span>唤醒度</span>
+              <strong id="arousalValue">0.00</strong>
+            </div>
+            <div class="stage-metric">
+              <span>置信度</span>
+              <strong id="confidenceValue">0.00</strong>
+            </div>
+          </div>
+        </div>
+
+        <section class="voice-panel">
+          <div>
+            <p class="section-tag">木偶此刻想说</p>
+            <p class="voice-text" id="frontendText">先检查连接状态，然后点击“开始联调”。</p>
+          </div>
+          <audio id="audioPlayer" controls preload="none"></audio>
+        </section>
+      </div>
+    </section>
+
+    <section class="content-band">
+      <div class="content-grid">
+        <aside class="control-column" id="controlSection">
+          <section class="panel steps-panel">
+            <header class="panel-head">
+              <div>
+                <p class="section-tag">操作顺序</p>
+                <h2>三步开始</h2>
+              </div>
+              <button class="ghost-button small-button" id="guideBtn" type="button">说明</button>
+            </header>
+
+            <ol class="steps-list">
+              <li>
+                <strong>先检查连接</strong>
+                <span>点击“刷新连接状态”，确认后端、豆包和语音能力是否可用。</span>
+              </li>
+              <li>
+                <strong>设置一次输入</strong>
+                <span>选择受试者编号、试次、输入文本，以及文本和语音的生成方式。</span>
+              </li>
+              <li>
+                <strong>开始联调</strong>
+                <span>点击按钮后，页面会展示情绪判断、回复文本、语音状态和音频播放结果。</span>
+              </li>
+            </ol>
+          </section>
+
+          <section class="panel control-panel">
+            <header class="panel-head">
+              <div>
+                <p class="section-tag">联调面板</p>
+                <h2>本次输入</h2>
+              </div>
+              <button class="ghost-button small-button" id="refreshProvidersBtn" type="button">刷新连接状态</button>
+            </header>
+
+            <form id="orchestrateForm" class="control-form">
+              <label>
+                <span>接口地址</span>
+                <input id="apiBaseInput" name="apiBase" type="text" value="http://127.0.0.1:8000" autocomplete="off">
+              </label>
+
+              <div class="field-row field-row-three">
+                <label>
+                  <span>受试者编号</span>
+                  <input id="subjectIdInput" name="subjectId" type="number" min="1" value="1">
+                </label>
+                <label>
+                  <span>试次编号</span>
+                  <input id="trialIdInput" name="trialId" type="number" min="1" max="80" value="1">
+                </label>
+                <label>
+                  <span>步长</span>
+                  <input id="strideInput" name="stride" type="number" min="1" value="4">
+                </label>
+              </div>
+
+              <div class="field-row field-row-two">
+                <label>
+                  <span>文本模式</span>
+                  <select id="llmProviderSelect" name="llmProvider">
+                    <option value="stub">本地示例回复</option>
+                    <option value="doubao">豆包自然回复</option>
+                    <option value="openai">兼容接口大模型</option>
+                    <option value="none">只做情绪判断</option>
+                  </select>
+                </label>
+
+                <label>
+                  <span>语音模式</span>
+                  <select id="ttsProviderSelect" name="ttsProvider">
+                    <option value="pyttsx3">本地免费语音</option>
+                    <option value="edge_tts">Edge 中文语音</option>
+                    <option value="emotivoice">EmotiVoice 语音</option>
+                    <option value="voice_soundboard">Voice Soundboard</option>
+                    <option value="stub">只生成语音计划</option>
+                    <option value="piper">本地 Piper 语音</option>
+                    <option value="openai">接口语音</option>
+                    <option value="none">不生成语音</option>
+                  </select>
+                </label>
+              </div>
+
+              <label>
+                <span>想对木偶说的话</span>
+                <textarea id="userTextInput" name="userText" rows="4">你现在想对我说什么？</textarea>
+              </label>
+
+              <div class="button-row">
+                <button class="primary-button" id="runButton" type="submit">开始联调</button>
+                <button class="ghost-button" id="demoButton" type="button">换一个示例</button>
+              </div>
+            </form>
+          </section>
+        </aside>
+
+        <div class="result-column">
+          <section class="panel status-panel">
+            <header class="panel-head">
+              <div>
+                <p class="section-tag">运行状态</p>
+                <h2>连接与能力</h2>
+              </div>
+              <span class="status-pill" id="providerSummary">文本模式：本地示例回复 / 语音模式：本地免费语音</span>
+            </header>
+
+            <div class="provider-grid">
+              <article class="provider-card">
+                <img src="https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=900&q=80" alt="豆包状态">
+                <div>
+                  <span>豆包文本</span>
+                  <strong id="doubaoStatus">未检测</strong>
+                </div>
+              </article>
+              <article class="provider-card">
+                <img src="https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=900&q=80" alt="兼容大模型状态">
+                <div>
+                  <span>兼容接口大模型</span>
+                  <strong id="openaiStatus">未检测</strong>
+                </div>
+              </article>
+              <article class="provider-card">
+                <img src="https://images.unsplash.com/photo-1516321497487-e288fb19713f?auto=format&fit=crop&w=900&q=80" alt="EmotiVoice状态">
+                <div>
+                  <span>EmotiVoice</span>
+                  <strong id="emotivoiceStatus">未检测</strong>
+                </div>
+              </article>
+              <article class="provider-card">
+                <img src="https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=900&q=80" alt="VoiceSoundboard状态">
+                <div>
+                  <span>Voice Soundboard</span>
+                  <strong id="voiceSoundboardStatus">未检测</strong>
+                </div>
+              </article>
+              <article class="provider-card">
+                <img src="https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=900&q=80" alt="本地语音状态">
+                <div>
+                  <span>本地免费语音</span>
+                  <strong id="pyttsx3Status">未检测</strong>
+                </div>
+              </article>
+              <article class="provider-card">
+                <img src="https://images.unsplash.com/photo-1516321497487-e288fb19713f?auto=format&fit=crop&w=900&q=80" alt="Windows 中文语音状态">
+                <div>
+                  <span>Edge 中文语音</span>
+                  <strong id="edgeTtsStatus">未检测</strong>
+                </div>
+              </article>
+              <article class="provider-card">
+                <img src="https://images.unsplash.com/photo-1516321497487-e288fb19713f?auto=format&fit=crop&w=900&q=80" alt="Piper状态">
+                <div>
+                  <span>Piper 语音</span>
+                  <strong id="piperStatus">未检测</strong>
+                </div>
+              </article>
+            </div>
+          </section>
+
+          <section class="panel emotion-panel">
+            <header class="panel-head">
+              <div>
+                <p class="section-tag">脑电判断结果</p>
+                <h2>情绪分布</h2>
+              </div>
+            </header>
+
+            <div class="probability-list" id="probabilityList"></div>
+
+            <div class="metric-grid">
+              <article>
+                <span>情绪强度</span>
+                <strong id="intensityValue">0.00</strong>
+              </article>
+              <article>
+                <span>情绪稳定度</span>
+                <strong id="stabilityValue">0.00</strong>
+              </article>
+              <article>
+                <span>呼吸幅度</span>
+                <strong id="breathingValue">0.00</strong>
+              </article>
+            </div>
+          </section>
+
+          <section class="panel linkage-panel">
+            <header class="panel-head">
+              <div>
+                <p class="section-tag">联动参数</p>
+                <h2>文字、语音与人格</h2>
+              </div>
+            </header>
+
+            <div class="linkage-grid">
+              <article>
+                <span class="mini-tag">当前心境</span>
+                <p id="systemMoodText">平稳观察中</p>
+              </article>
+              <article>
+                <span class="mini-tag">回复口吻</span>
+                <p id="responseStyleText">安静、自然、可交谈</p>
+              </article>
+              <article>
+                <span class="mini-tag">语音风格</span>
+                <p id="ttsStyleText">自然交谈</p>
+              </article>
+              <article>
+                <span class="mini-tag">提示词摘要</span>
+                <p id="promptHintText">等待新的情绪状态。</p>
+              </article>
+            </div>
+          </section>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <dialog class="guide-dialog" id="guideDialog">
+    <div class="guide-sheet">
+      <header class="guide-head">
+        <div>
+          <p class="section-tag">第一次使用说明</p>
+          <h2>如何使用这个页面</h2>
+        </div>
+        <button class="ghost-button small-button" id="closeGuideBtn" type="button">关闭</button>
+      </header>
+
+      <div class="guide-content">
+        <section>
+          <h3>一、先准备什么</h3>
+          <ul>
+            <li>先启动本地后端接口，默认地址是 <code>http://127.0.0.1:8000</code>。</li>
+            <li>如果要使用豆包文本，请确认当前终端已经配置好 <code>ARK_API_KEY</code> 和 <code>ARK_MODEL</code>。</li>
+            <li>如果要使用 EmotiVoice，请确认项目根目录下已经有 <code>third_party/EmotiVoice</code>，并且模型权重已经下载完整。</li>
+          </ul>
+        </section>
+
+        <section>
+          <h3>二、页面怎么操作</h3>
+          <ul>
+            <li>先点击“刷新连接状态”，看豆包和语音模块是否已经就绪。</li>
+            <li>填入受试者编号、试次编号和你想说的话。</li>
+            <li>选择文本模式和语音模式，然后点击“开始联调”。</li>
+          </ul>
+        </section>
+
+        <section>
+          <h3>三、结果怎么看</h3>
+          <ul>
+            <li>页面上方会展示当前情绪、动作状态和核心数值。</li>
+            <li>“情绪分布”会显示七类情绪的概率。</li>
+            <li>“文字、语音与人格”会显示当前心境、回复风格和语音风格。</li>
+            <li>如果语音合成成功，下方音频播放器会自动加载音频。</li>
+          </ul>
+        </section>
+
+        <section>
+          <h3>四、常见问题</h3>
+          <ul>
+            <li>如果豆包状态为未就绪，请检查当前启动后端的终端里是否真的设置了豆包环境变量。</li>
+            <li>如果 EmotiVoice 未就绪，请先检查 <code>third_party/EmotiVoice/outputs</code> 和 <code>third_party/EmotiVoice/WangZeJun/simbert-base-chinese</code> 是否完整。</li>
+            <li>如果想快速试效果，可以先点“换一个示例”。</li>
+          </ul>
+        </section>
+      </div>
+    </div>
+  </dialog>
+
+  <script src="./live2d-manager.js"></script>
+  <script src="./app.js"></script>
+</body>
+</html>

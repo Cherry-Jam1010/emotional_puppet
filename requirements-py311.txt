@@ -1,0 +1,12 @@
+fastapi==0.124.4
+uvicorn==0.33.0
+pydantic==2.10.6
+numpy==2.0.2
+scipy==1.14.1
+openpyxl==3.1.5
+torch==2.4.1
+scikit-learn==1.5.2
+requests==2.32.3
+pyttsx3==2.99
+edge-tts==7.2.8
+voice-soundboard[kokoro] @ https://files.pythonhosted.org/packages/f1/c5/2089d11b2462002ac8e8191179315d9acd0ea28e04b85b5f48ec1c34d0ef/voice_soundboard-2.6.3-py3-none-any.whl
