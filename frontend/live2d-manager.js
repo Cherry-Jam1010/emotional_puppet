@@ -127,7 +127,7 @@
     },
   };
 
-  // Exaggerated continuous oscillation presets — multiplied for dramatic effect
+  // Exaggerated expression presets — multiplied for dramatic effect
   const EXAGGERATED_EXPRESSION_PRESETS = {
     happy: {
       ParamCheek: 0.95,
@@ -264,6 +264,21 @@
     "ParamBodyAngleZ",
   ];
 
+  // Motion sequences for exaggerated (high-arousal) mode — cycles through Idle entries
+  const EXAGGERATED_MOTION_MAP = {
+    happy:     [{ group: "Idle", index: 2 }, { group: "Idle", index: 6 }],
+    smile:     [{ group: "Idle", index: 2 }, { group: "Idle", index: 6 }],
+    angry:     [{ group: "Idle", index: 1 }, { group: "Idle", index: 3 }],
+    anger:     [{ group: "Idle", index: 1 }, { group: "Idle", index: 3 }],
+    fear:      [{ group: "Idle", index: 3 }, { group: "Idle", index: 4 }],
+    surprised: [{ group: "TapBody", index: 0 }, { group: "Idle", index: 8 }],
+    surprise:  [{ group: "TapBody", index: 0 }, { group: "Idle", index: 8 }],
+    disgust:   [{ group: "Idle", index: 4 }, { group: "Idle", index: 5 }],
+    neutral:   [{ group: "Idle", index: 0 }, { group: "Idle", index: 7 }],
+    calm:      [{ group: "Idle", index: 0 }, { group: "Idle", index: 7 }],
+    sad:       [{ group: "Idle", index: 7 }, { group: "Idle", index: 4 }],
+  };
+
   const ANIMATION_MOTION_MAP = {
     calm_idle: { group: "Idle", index: 0 },
     tense_idle: { group: "Idle", index: 1 },
@@ -296,6 +311,7 @@
   let currentEmotionKey = "neutral";
   let syntheticExpressionState = {};
   let currentAnimationState = null;
+  let currentAnimEmotionKey = null; // track which emotion the current animation is for
   let motionFallbackTimer = null;
 
   // Continuous animation state
@@ -680,10 +696,13 @@
     if (!model || !window.live2dReady) return;
 
     const key = animationState || "calm_idle";
-    if (currentAnimationState === key) {
+    // Re-apply if emotion changed even if animation_state label is the same
+    const emotionChanged = currentAnimEmotionKey !== baseEmotionKey;
+    if (!emotionChanged && currentAnimationState === key) {
       return;
     }
     currentAnimationState = key;
+    currentAnimEmotionKey = baseEmotionKey;
 
     if (motionFallbackTimer) {
       window.clearTimeout(motionFallbackTimer);
@@ -748,7 +767,6 @@
     currentEmotionKey = key;
     baseEmotionKey = key;
 
-    // Also read motion scale from avatar stage if available
     const stage = canvas && canvas.parentElement;
     if (stage) {
       const scaleAttr = stage.dataset.motionScale;
@@ -758,16 +776,15 @@
     }
 
     const expressionName = EXPRESSION_MAP[key] || "exp_01";
-    if (currentExpressionName === expressionName) {
-      if (!hasNativeExpressions()) {
-        return;
-      }
-    }
+    const syntheticOnly = !hasNativeExpressions();
 
+    if (currentExpressionName === expressionName && !syntheticOnly) {
+      return;
+    }
     currentExpressionName = expressionName;
 
     try {
-      if (!hasNativeExpressions()) {
+      if (syntheticOnly) {
         console.info("Live2D: synthetic expression applied", key, "scale=" + motionScale.toFixed(2));
         return;
       }
